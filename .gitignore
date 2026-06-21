@@ -27,3 +27,7 @@ backend/catboost_info/
 
 # generated detection output
 *.boxes.jpg
+
+# demo video clips (large)
+demo-clips/
+*.mp4
