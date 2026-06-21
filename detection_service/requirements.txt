@@ -7,3 +7,7 @@ pillow
 # torch
 # transformers
 # accelerate
+
+# YOLO baseline (DETECTOR=yolo) — fast, local, closed-vocabulary:
+# ultralytics
+# easyocr        # optional: license-plate OCR for YoloDetector

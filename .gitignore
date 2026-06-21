@@ -14,3 +14,16 @@ models/*.json
 .DS_Store
 feedback_log.jsonl
 data/police_violations.csv
+
+# model caches & weights — never commit these (multi-GB / auto-downloaded)
+hugging-face/
+*.pt
+*.safetensors
+*.bin
+*.onnx
+
+# training artifacts
+backend/catboost_info/
+
+# generated detection output
+*.boxes.jpg

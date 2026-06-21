@@ -33,8 +33,6 @@ def build_events(detections, no_parking_zone=None, context=None):
 
     vehicles = [d for d in detections if d["label"] in VEHICLE_LABELS]
     plates = [d for d in detections if d["label"] == "license_plate"]
-    riders = [d for d in detections if d["label"] == "motorcycle_rider"]
-    helmets = [d for d in detections if d["label"] == "helmet"]
 
     # lane block: a vehicle sitting inside the no-parking zone
     if no_parking_zone:
@@ -43,12 +41,14 @@ def build_events(detections, no_parking_zone=None, context=None):
                 plate = _nearest_plate(v, plates)
                 events.append(_event("lane_block", v["confidence"], v, plate, context))
 
-    # no helmet: a rider with no helmet box overlapping their upper region
-    for rd in riders:
-        has_helmet = any(_overlap(h["box"], rd["box"]) > 0.05 for h in helmets)
-        if not has_helmet:
-            plate = _nearest_plate(rd, plates)
-            events.append(_event("no_helmet", rd["confidence"], rd, plate, context))
+    # no helmet: a dedicated helmet model classifies each rider's head, emitting
+    # a "no_helmet" box for un-helmeted heads. each such box is a violation.
+    # if no helmet model is loaded there are no "no_helmet" detections, so we
+    # raise nothing rather than falsely flagging every rider.
+    bare_heads = [d for d in detections if d["label"] == "no_helmet"]
+    for head in bare_heads:
+        plate = _nearest_plate(head, plates)
+        events.append(_event("no_helmet", head["confidence"], head, plate, context))
 
     return events
 
