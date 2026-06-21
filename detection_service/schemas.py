@@ -31,6 +31,8 @@ class ViolationEvent(BaseModel):
     event_id: str
     violation_type: str = Field(..., description="lane_block or no_helmet")
     confidence: float = Field(..., ge=0.0, le=1.0)
+    created_datetime: str | None = Field(None, description="UTC ISO timestamp")
+    plate_confidence: float | None = None
     corridor: str | None = None
     junction: str | None = None
     latitude: float | None = None

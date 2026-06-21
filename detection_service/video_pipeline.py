@@ -22,6 +22,7 @@ import os
 import statistics
 import time
 from collections import defaultdict, deque
+from datetime import datetime, timezone
 
 import cv2
 import numpy as np
@@ -29,6 +30,18 @@ from PIL import Image
 
 from detector import YoloDetector
 from rules import build_events
+from emit import (
+    CONGESTION_COLUMNS,
+    VIOLATION_COLUMNS,
+    FeedWriter,
+    congestion_record,
+    load_config,
+    violation_record,
+)
+
+
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat()
 
 # COCO ids we count as vehicles, mapped to rules.py labels
 VEHICLE_CLASSES = {2: "car", 3: "motorcycle_rider", 5: "bus", 7: "truck"}
@@ -54,7 +67,19 @@ def main():
     ap.add_argument("--ema", type=float, default=0.2, help="smoothing factor 0..1")
     ap.add_argument("--max-frames", type=int, default=0, help="0 = whole clip")
     ap.add_argument("--show", action="store_true")
+    ap.add_argument("--emit", action="store_true",
+                    help="write SCITA violation + congestion CSV feeds")
+    ap.add_argument("--emit-dir", default="../data/feeds")
+    ap.add_argument("--window", type=float, default=5.0,
+                    help="congestion aggregation window in seconds")
+    ap.add_argument("--zone", default=None,
+                    help="no-parking zone 'x1,y1,x2,y2' for lane_block detection")
     args = ap.parse_args()
+
+    zone = None
+    if args.zone:
+        zx = [float(v) for v in args.zone.split(",")]
+        zone = {"x1": zx[0], "y1": zx[1], "x2": zx[2], "y2": zx[3]}
 
     d = YoloDetector()  # base + helmet + plate, loaded once
     cap = cv2.VideoCapture(args.video)
@@ -73,6 +98,20 @@ def main():
     fast_times, heavy_times = [], []
     vio_counts = defaultdict(int)
     fi = 0
+
+    # --- structured SCITA feeds ---
+    emit_cfg = vio_writer = cong_writer = evidence_dir = None
+    vseq = cseq = 0
+    win_frames = max(1, int(args.window * fps))
+    win_counts, win_by_type, win_station_max, win_start = [], defaultdict(int), 0, 1
+    if args.emit:
+        emit_cfg = load_config()
+        evidence_dir = os.path.join(args.emit_dir, "evidence")
+        os.makedirs(evidence_dir, exist_ok=True)
+        vio_writer = FeedWriter(
+            os.path.join(args.emit_dir, "violations.csv"), VIOLATION_COLUMNS)
+        cong_writer = FeedWriter(
+            os.path.join(args.emit_dir, "congestion.csv"), CONGESTION_COLUMNS)
 
     while True:
         ok, frame = cap.read()
@@ -118,6 +157,30 @@ def main():
         if count >= args.free and stationary >= max(3, count * 0.6):
             level, color = "JAM", (0, 0, 255)
 
+        # ---- CONGESTION FEED: aggregate per window and emit ----
+        if args.emit:
+            win_counts.append(count)
+            for (_x1, _y1, _x2, _y2, _tid, cls) in vehicles:
+                win_by_type[VEHICLE_CLASSES.get(cls, "vehicle")] += 1
+            win_station_max = max(win_station_max, stationary)
+            if fi - win_start + 1 >= win_frames:
+                n = len(win_counts)
+                cong_writer.write(congestion_record({
+                    "created_datetime": _now_iso(),
+                    "window_seconds": args.window,
+                    "count_avg": sum(win_counts) / n if n else 0,
+                    "count_peak": max(win_counts) if win_counts else 0,
+                    "stationary": win_station_max,
+                    "level": level,
+                    "by_type": {t: round(s / n) for t, s in win_by_type.items()} if n else {},
+                    "frame_start": win_start, "frame_end": fi,
+                }, emit_cfg, cseq))
+                cseq += 1
+                win_counts.clear()
+                win_by_type.clear()
+                win_station_max = 0
+                win_start = fi + 1
+
         # ---- HEAVY TIER: violations every N frames ----
         if fi % args.every == 1:
             th = time.time()
@@ -135,7 +198,7 @@ def main():
             if d.plate_model is not None:
                 dets.extend(d._detect_plates(pil, base_dets))
 
-            evs = build_events(dets, no_parking_zone=None,
+            evs = build_events(dets, no_parking_zone=zone,
                                context={"corridor": "demo"})
             for e in evs:
                 vio_counts[e["violation_type"]] += 1
@@ -144,6 +207,24 @@ def main():
                 if x["label"] in ("helmet", "no_helmet", "license_plate")
             ]
             heavy_times.append(time.time() - th)
+
+            # ---- VIOLATION FEED: one schema row + evidence crop per event ----
+            if args.emit:
+                for ev in evs:
+                    rec = violation_record(ev, emit_cfg, vseq, source_frame=fi)
+                    ev_box = ev.get("vehicle") or (
+                        ev["detections"][0] if ev["detections"] else None)
+                    if ev_box:
+                        b = ev_box["box"]
+                        x1, y1 = max(0, int(b["x1"])), max(0, int(b["y1"]))
+                        x2, y2 = int(b["x2"]), int(b["y2"])
+                        crop = frame[y1:y2, x1:x2]
+                        if crop.size:
+                            ep = os.path.join(evidence_dir, rec["id"] + ".jpg")
+                            cv2.imwrite(ep, crop)
+                            rec["evidence_image_path"] = ep.replace(os.sep, "/")
+                    vio_writer.write(rec)
+                    vseq += 1
 
         # ---- DRAW ----
         for (x1, y1, x2, y2, tid, cls) in vehicles:
@@ -173,10 +254,28 @@ def main():
             if cv2.waitKey(1) & 0xFF == 27:
                 break
 
+    # flush a trailing partial congestion window
+    if args.emit and win_counts:
+        n = len(win_counts)
+        cong_writer.write(congestion_record({
+            "created_datetime": _now_iso(),
+            "window_seconds": args.window,
+            "count_avg": sum(win_counts) / n,
+            "count_peak": max(win_counts),
+            "stationary": win_station_max,
+            "level": level,
+            "by_type": {t: round(s / n) for t, s in win_by_type.items()},
+            "frame_start": win_start, "frame_end": fi,
+        }, emit_cfg, cseq))
+        cseq += 1
+
     cap.release()
     writer.release()
     if args.show:
         cv2.destroyAllWindows()
+    if args.emit:
+        vio_writer.close()
+        cong_writer.close()
 
     ft = statistics.mean(fast_times) if fast_times else 0
     print(f"\nframes processed : {fi}")
@@ -185,6 +284,9 @@ def main():
         print(f"heavy tier       : {statistics.mean(heavy_times):.2f} s/call "
               f"over {len(heavy_times)} calls")
     print(f"violations       : {dict(vio_counts)}")
+    if args.emit:
+        print(f"feeds            : {vseq} violation rows, {cseq} congestion rows "
+              f"-> {args.emit_dir}")
     print(f"annotated output : {out_path}")
 
 

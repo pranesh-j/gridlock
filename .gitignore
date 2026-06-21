@@ -31,3 +31,6 @@ backend/catboost_info/
 # demo video clips (large)
 demo-clips/
 *.mp4
+
+# generated SCITA feeds + evidence images
+data/feeds/
