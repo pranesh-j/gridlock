@@ -2,9 +2,72 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  background: #0b0f17;
-  color: #e6edf3;
-  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+:root {
+  --gl-bg: #0A0E14;
+  --gl-surface-1: #0F1520;
+  --gl-surface-2: #151D2B;
+  --gl-surface-3: #1C2735;
+  --gl-surface-inset: #0C1018;
+  --gl-text-1: #E8ECF2;
+  --gl-text-2: #A0AABB;
+  --gl-text-3: #5C6A7E;
+  --gl-border: #1E2A3A;
+  --gl-border-strong: #2A3648;
+  --gl-hairline: rgba(255,255,255,0.06);
+  --gl-primary: #10B981;
+  --gl-primary-hover: #34D399;
+  --gl-primary-soft: rgba(16,185,129,0.10);
+  --gl-primary-border: rgba(16,185,129,0.22);
+  --gl-sev-low: #2E8B40;
+  --gl-sev-low-fill: rgba(46,139,64,0.18);
+  --gl-sev-moderate: #D6DE28;
+  --gl-sev-moderate-fill: rgba(214,222,40,0.18);
+  --gl-sev-high: #EC7830;
+  --gl-sev-high-fill: rgba(236,120,48,0.18);
+  --gl-sev-high-soft: rgba(236,120,48,0.12);
+  --gl-sev-critical: #C52A2D;
+  --gl-sev-critical-fill: rgba(197,42,45,0.18);
+  --gl-map-land: #E8E4DF;
+  --gl-map-park: #C5DFC0;
+  --gl-map-water: #B8D4E8;
+  --gl-map-road: #D5CFC8;
+  --gl-map-road-major: #F5F0E8;
+  --gl-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --gl-font-display: 'Inter', system-ui, sans-serif;
+  --gl-font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  --gl-text-h2: 18px;
+  --gl-text-h3: 15px;
+  --gl-text-body: 14px;
+  --gl-text-sm: 13px;
+  --gl-text-xs: 12px;
+  --gl-text-micro: 10.5px;
+  --gl-ls-eyebrow: 0.06em;
+  --gl-ls-snug: -0.01em;
+  --gl-radius-sm: 6px;
+  --gl-radius-md: 10px;
+  --gl-radius-lg: 14px;
+  --gl-radius-pill: 100px;
+  --gl-rail-w: 220px;
+  --gl-header-h: 56px;
+  --gl-content-max: 1120px;
+  --gl-dur-fast: 120ms;
+  --gl-dur-base: 200ms;
+  --gl-dur-slow: 350ms;
+  --gl-ease: cubic-bezier(0.22,0.68,0,1);
+  --gl-ease-inout: cubic-bezier(0.4,0,0.2,1);
+  --gl-shadow-md: 0 4px 16px rgba(0,0,0,0.35);
+  --gl-shadow-lg: 0 8px 32px rgba(0,0,0,0.45);
+  --gl-ring: 0 0 0 1px var(--gl-border);
+  --gl-ring-strong: 0 0 0 1px var(--gl-border-strong);
 }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--gl-bg); color: var(--gl-text-1); font-family: var(--gl-font-sans); -webkit-font-smoothing: antialiased; }
+#root { height: 100vh; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--gl-border-strong); border-radius: 10px; border: 2px solid var(--gl-bg); }
+::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes gl-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes gl-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }

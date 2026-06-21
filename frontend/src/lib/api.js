@@ -18,9 +18,22 @@ export async function forecastScenario(ctx) {
   return r.json();
 }
 
-export async function getHotspots(limit = 1500) {
-  const r = await fetch(`${BASE}/hotspots?limit=${limit}`);
+export async function getHotspots(filters = {}) {
+  const params = new URLSearchParams();
+  if (filters.violation_type) params.set("violation_type", filters.violation_type);
+  if (filters.vehicle_type) params.set("vehicle_type", filters.vehicle_type);
+  if (filters.police_station) params.set("police_station", filters.police_station);
+  if (filters.hour_start != null) params.set("hour_start", filters.hour_start);
+  if (filters.hour_end != null) params.set("hour_end", filters.hour_end);
+  if (filters.sample) params.set("sample", filters.sample);
+  const r = await fetch(`${BASE}/hotspots?${params.toString()}`);
   if (!r.ok) throw new Error("hotspots failed");
+  return r.json();
+}
+
+export async function getHotspotsMeta() {
+  const r = await fetch(`${BASE}/hotspots/meta`);
+  if (!r.ok) throw new Error("meta failed");
   return r.json();
 }
 

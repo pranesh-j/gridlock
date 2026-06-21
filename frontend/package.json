@@ -13,8 +13,7 @@
     "react-dom": "^18.3.1",
     "lucide-react": "^0.383.0",
     "recharts": "^2.12.7",
-    "react-leaflet": "^4.2.1",
-    "leaflet": "^1.9.4"
+    "mappls-web-maps": "latest"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
