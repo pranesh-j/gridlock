@@ -444,6 +444,40 @@ class YoloDetector(Detector):
             )
         return plates
 
+    def plate_in_vehicle(self, image, vehicle_box):
+        """Detect + read a plate within a single vehicle box, on demand.
+
+        Used to enrich track-based events (parking/wrong-way) with a plate
+        without re-running the whole frame. Returns a license_plate detection
+        dict (mapped to full-image coords) or None.
+        """
+        if self.plate_model is None:
+            return None
+        W, H = image.size
+        b = vehicle_box
+        pad_x = (b["x2"] - b["x1"]) * 0.10
+        pad_y = (b["y2"] - b["y1"]) * 0.15
+        cx1, cy1 = max(0, int(b["x1"] - pad_x)), max(0, int(b["y1"] - pad_y))
+        cx2, cy2 = min(W, int(b["x2"] + pad_x)), min(H, int(b["y2"] + pad_y))
+        if cx2 - cx1 < 16 or cy2 - cy1 < 16:
+            return None
+        crop = image.crop((cx1, cy1, cx2, cy2))
+        best = None
+        for p in self._infer(self.plate_model, crop, conf=self.plate_conf):
+            if best is None or p["confidence"] > best["confidence"]:
+                best = p
+        if best is None:
+            return None
+        pb = best["box"]
+        box = {"x1": pb["x1"] + cx1, "y1": pb["y1"] + cy1,
+               "x2": pb["x2"] + cx1, "y2": pb["y2"] + cy1}
+        return {
+            "label": "license_plate",
+            "confidence": best["confidence"],
+            "box": box,
+            "ocr_text": self._read_plate(image, box),
+        }
+
     def detect(self, image_bytes: bytes, prompts: list[str] = None) -> list[dict]:
         # prompts are ignored (YOLO is closed-vocabulary); kept for interface parity
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")

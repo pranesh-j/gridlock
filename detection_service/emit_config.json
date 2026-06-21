@@ -12,7 +12,9 @@
   "violation_map": {
     "no_helmet": {"label": "RIDING WITHOUT HELMET", "offence_code": null},
     "lane_block": {"label": "WRONG PARKING", "offence_code": 112},
-    "triple_riding": {"label": "TRIPLE RIDING", "offence_code": null}
+    "triple_riding": {"label": "TRIPLE RIDING", "offence_code": null},
+    "illegal_parking": {"label": "ILLEGAL PARKING", "offence_code": null},
+    "wrong_side_driving": {"label": "WRONG SIDE DRIVING", "offence_code": null}
   },
   "vehicle_type_map": {
     "car": "CAR",

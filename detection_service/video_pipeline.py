@@ -29,7 +29,8 @@ import numpy as np
 from PIL import Image
 
 from detector import YoloDetector
-from rules import build_events
+from rules import build_events, _event
+from track_rules import TrackMonitor
 from emit import (
     CONGESTION_COLUMNS,
     VIOLATION_COLUMNS,
@@ -134,13 +135,23 @@ def main():
     ap.add_argument("--window", type=float, default=5.0,
                     help="congestion aggregation window in seconds")
     ap.add_argument("--zone", default=None,
-                    help="no-parking zone 'x1,y1,x2,y2' for lane_block detection")
+                    help="no-parking zone 'x1,y1,x2,y2' (lane_block + illegal_parking)")
+    ap.add_argument("--dwell", type=float, default=5.0,
+                    help="seconds stationary in zone before illegal_parking fires")
+    ap.add_argument("--flow", default=None,
+                    help="expected lane direction 'dx,dy' (image coords, y down) "
+                         "for wrong_side_driving, e.g. '0,1' = traffic moves down")
     args = ap.parse_args()
 
     zone = None
     if args.zone:
         zx = [float(v) for v in args.zone.split(",")]
         zone = {"x1": zx[0], "y1": zx[1], "x2": zx[2], "y2": zx[3]}
+
+    flow_vec = None
+    if args.flow:
+        fv = [float(v) for v in args.flow.split(",")]
+        flow_vec = (fv[0], fv[1])
 
     d = YoloDetector()  # base + helmet + plate, loaded once
     cap = cv2.VideoCapture(args.video)
@@ -174,6 +185,26 @@ def main():
         cong_writer = FeedWriter(
             os.path.join(args.emit_dir, "congestion.csv"), CONGESTION_COLUMNS)
 
+    # temporal (track-based) violations: illegal_parking + wrong_side_driving
+    monitor = TrackMonitor(
+        fps,
+        event_builder=lambda vt, det, ctx: _event(
+            vt, det["confidence"], det, None, ctx, vehicle=det),
+        no_parking_zone=zone, park_dwell_s=args.dwell, flow_vec=flow_vec,
+    )
+    active_alerts = deque()  # (expire_frame, box, label) for the on-screen overlay
+
+    def write_violation(ev, frame_img, all_dets, frame_idx):
+        nonlocal vseq
+        rec = violation_record(ev, emit_cfg, vseq, source_frame=frame_idx)
+        crop = _evidence_crop(frame_img, ev, all_dets)
+        if crop is not None and crop.size:
+            ep = os.path.join(evidence_dir, rec["id"] + ".jpg")
+            cv2.imwrite(ep, crop)
+            rec["evidence_image_path"] = ep.replace(os.sep, "/")
+        vio_writer.write(rec)
+        vseq += 1
+
     while True:
         ok, frame = cap.read()
         if not ok:
@@ -190,14 +221,22 @@ def main():
         )[0]
 
         vehicles = []  # (x1,y1,x2,y2,id,cls)
+        tracks = []    # dicts for TrackMonitor: {id,label,box,confidence}
         if res.boxes is not None and len(res.boxes) > 0:
             ids = (res.boxes.id.int().tolist()
                    if res.boxes.id is not None else [None] * len(res.boxes))
-            for xyxy, tid, cls in zip(
-                res.boxes.xyxy.tolist(), ids, res.boxes.cls.int().tolist()
+            confs = (res.boxes.conf.tolist()
+                     if res.boxes.conf is not None else [0.85] * len(res.boxes))
+            for xyxy, tid, cls, cf in zip(
+                res.boxes.xyxy.tolist(), ids, res.boxes.cls.int().tolist(), confs
             ):
                 x1, y1, x2, y2 = map(int, xyxy)
                 vehicles.append((x1, y1, x2, y2, tid, cls))
+                tracks.append({
+                    "id": tid, "label": VEHICLE_CLASSES.get(cls, "vehicle"),
+                    "box": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+                    "confidence": float(cf),
+                })
                 if tid is not None:
                     track_hist[tid].append(((x1 + x2) // 2, (y1 + y2) // 2))
 
@@ -242,6 +281,27 @@ def main():
                 win_station_max = 0
                 win_start = fi + 1
 
+        # ---- TEMPORAL VIOLATIONS (every frame, track-based) ----
+        temporal = monitor.update(tracks, fi, {"corridor": "demo"})
+        pil_frame = None  # built lazily, only when an event needs a plate read
+        for ev in temporal:
+            # enrich with the offending vehicle's plate (on demand)
+            if d.plate_model is not None and not ev.get("plate_text"):
+                if pil_frame is None:
+                    pil_frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                vbox = (ev.get("vehicle") or ev["detections"][0])["box"]
+                plate = d.plate_in_vehicle(pil_frame, vbox)
+                if plate:
+                    ev["plate_text"] = plate["ocr_text"]
+                    ev["plate_confidence"] = (
+                        round(float(plate["confidence"]), 3))
+                    ev["detections"].append(plate)
+            vio_counts[ev["violation_type"]] += 1
+            active_alerts.append(
+                (fi + int(fps * 3), ev["detections"][0]["box"], ev["violation_type"]))
+            if args.emit:
+                write_violation(ev, frame, [], fi)
+
         # ---- HEAVY TIER: violations every N frames ----
         if fi % args.every == 1:
             th = time.time()
@@ -272,14 +332,7 @@ def main():
             # ---- VIOLATION FEED: one schema row + evidence crop per event ----
             if args.emit:
                 for ev in evs:
-                    rec = violation_record(ev, emit_cfg, vseq, source_frame=fi)
-                    crop = _evidence_crop(frame, ev, dets)
-                    if crop is not None and crop.size:
-                        ep = os.path.join(evidence_dir, rec["id"] + ".jpg")
-                        cv2.imwrite(ep, crop)
-                        rec["evidence_image_path"] = ep.replace(os.sep, "/")
-                    vio_writer.write(rec)
-                    vseq += 1
+                    write_violation(ev, frame, dets, fi)
 
         # ---- DRAW ----
         for (x1, y1, x2, y2, tid, cls) in vehicles:
@@ -296,6 +349,16 @@ def main():
             tag = det["label"] + (f" {det['ocr_text']}" if det.get("ocr_text") else "")
             cv2.putText(frame, tag, (int(b["x1"]), int(b["y1"]) - 5),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, col, 1)
+
+        # active temporal-violation alerts (illegal parking / wrong-side)
+        while active_alerts and active_alerts[0][0] < fi:
+            active_alerts.popleft()
+        for _exp, b, lab in active_alerts:
+            cv2.rectangle(frame, (int(b["x1"]), int(b["y1"])),
+                          (int(b["x2"]), int(b["y2"])), (0, 0, 255), 3)
+            cv2.putText(frame, lab.replace("_", " ").upper(),
+                        (int(b["x1"]), int(b["y1"]) - 6),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
         cv2.rectangle(frame, (0, 0), (380, 78), (0, 0, 0), -1)
         cv2.putText(frame, f"Vehicles: {count}  (avg {smoothed:.1f}, still {stationary})",

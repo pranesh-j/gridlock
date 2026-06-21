@@ -46,7 +46,10 @@ _infer_lock = threading.Lock()
 DEFAULT_ZONE = {"x1": 100, "y1": 180, "x2": 400, "y2": 420}
 DEFAULT_CONTEXT = {"corridor": "Tumkur Road", "zone": "Peenya"}
 
-VIOLATION_TYPES = ["lane_block", "no_helmet", "triple_riding"]
+VIOLATION_TYPES = [
+    "lane_block", "no_helmet", "triple_riding",
+    "illegal_parking", "wrong_side_driving",
+]
 KNOWN_LABELS = [
     "car", "truck", "bus", "motorcycle_rider", "bicycle",
     "person", "helmet", "no_helmet", "license_plate",

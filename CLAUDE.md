@@ -6,11 +6,13 @@ map of how the pieces fit and how to integrate with them.
 
 ## What the system does
 
-A traffic-camera **image or video** is analysed for violations
-(**no-helmet riders**, **lane-blocking / wrong parking**) and **congestion**.
+A traffic-camera **image or video** is analysed for violations and **congestion**.
 Detections are emitted as structured records in the **SCITA police schema**, and
 lane-block incidents are fed to a forecaster that predicts severity / closure /
 clearance and recommends a response.
+
+Violation types currently emitted (the `ViolationType` enum in `shared/schema.py`):
+`lane_block`, `no_helmet`, `triple_riding`, `illegal_parking`, `wrong_side_driving`.
 
 ## Services (who owns what)
 
@@ -43,10 +45,17 @@ for the full API reference.
    → `helmet`/`no_helmet` heads; a plate model (run full-frame **and per-vehicle
    crops** so small plates are detectable) → plates, each read by **EasyOCR**.
    All detections share one shape: `{label, confidence, box{x1,y1,x2,y2}, ocr_text}`.
-2. **Rules** (`build_events`): emits `lane_block` (vehicle centre inside a
-   `no_parking_zone`) and `no_helmet` (each bare head). Plates are tied to a
-   violation by **spatial containment** (the offending vehicle's own plate, not
-   nearest-x). Every event is timestamped.
+2. **Single-frame rules** (`rules.py` `build_events`): emits `lane_block`
+   (vehicle centre inside a `no_parking_zone`), `no_helmet` (each bare head), and
+   `triple_riding` (3+ heads above one motorcycle). Plates are tied to a violation
+   by **spatial containment** (the offending vehicle's own plate, not nearest-x).
+   Every event is timestamped.
+3. **Temporal rules** (`track_rules.py` `TrackMonitor`, video only — needs
+   tracking history): emits `illegal_parking` (vehicle stationary in the zone for
+   ≥ a dwell time) and `wrong_side_driving` (travel direction opposes the lane's
+   configured flow). Debounced per track; emits the **same event shape**, so emit/
+   feeds/evidence are identical. These read a plate on demand via
+   `YoloDetector.plate_in_vehicle()`.
 
 **Entry point A — REST (`service.py`, per image):**
 `POST /detect` (multipart image + optional `no_parking_zone`/`context`) →
@@ -54,10 +63,14 @@ for the full API reference.
 Backend selected by `DETECTOR` env (`yolo` default, `mock`, `locateanything`).
 
 **Entry point B — video (`video_pipeline.py`):**
-A capture loop with two tiers — **fast** (every frame: tracking + vehicle count
-+ congestion level) and **heavy** (throttled: helmet/plate/OCR → violations).
-With `--emit` it writes the structured feeds (below) + an annotated `.mp4` +
-per-violation evidence crops, in one pass.
+A capture loop with two tiers — **fast** (every frame: tracking + vehicle count +
+congestion level + temporal violations) and **heavy** (throttled: helmet/plate/OCR
+→ single-frame violations). With `--emit` it writes the structured feeds (below) +
+an annotated `.mp4` + per-violation evidence crops, in one pass. Key flags:
+`--zone x1,y1,x2,y2` (no-parking area → `lane_block`/`illegal_parking`),
+`--dwell <sec>` (parking dwell time), `--flow dx,dy` (lane direction →
+`wrong_side_driving`), `--window <sec>` (congestion window), `--every <n>`
+(heavy-tier cadence). `--zone` and `--flow` are **per-camera calibration**.
 
 ## Data contracts (what to integrate against)
 
@@ -84,7 +97,7 @@ python service.py                       # :8001  (set DETECTOR, PORT as needed)
 
 # video -> annotated clip + feeds (single pass)
 python video_pipeline.py --video ../demo-clips/test-video-1.mp4 --emit \
-    [--zone x1,y1,x2,y2]  [--window 5]  [--every 30]
+    [--zone x1,y1,x2,y2]  [--dwell 5]  [--flow 0,1]  [--window 5]  [--every 30]
 
 # backend + frontend (separate)
 cd backend && pip install -r requirements.txt && uvicorn main:app --port 8000
@@ -115,13 +128,16 @@ rows. `backend/forecaster.py` (CatBoost) is the home; it needs trained
 
 ## Status & gotchas (read before changing behaviour)
 
-- ✅ Working: vehicle/rider detection, `no_helmet`, congestion levels (much more
-  realistic since the yolo11m upgrade), structured feeds, evidence crops.
+- ✅ Working: vehicle/rider detection, `no_helmet`, `triple_riding`,
+  `illegal_parking`, `wrong_side_driving`, congestion levels (much more realistic
+  since the yolo11m upgrade), structured feeds, evidence crops.
 - ⚠️ **Plate OCR is resolution-bound** — `vehicle_number` is often `NULL` on
   small/low-res plates in wide footage. Detection of the plate works; reading it
-  needs decent pixels. Not a schema bug.
-- ⚠️ `lane_block` only fires when a `--zone` (no-parking rectangle) is provided,
-  calibrated per camera. Without it you get `no_helmet` only.
+  needs decent pixels. For temporal events, `plate_confidence` may be set while
+  `vehicle_number` is `NULL` — that means the plate was *found* but not *read*.
+- ⚠️ `lane_block`/`illegal_parking` need a `--zone`, and `wrong_side_driving`
+  needs `--flow` — **both are per-camera calibration**. A wrong `--flow` direction
+  over-flags normal traffic as wrong-side.
 - ⚠️ `emit_config.json` holds **placeholders** — offence codes / device / location
   must be set before the feed is production-real.
 - ⚠️ `vehicle_type` has no auto-rickshaw class (COCO limitation).
@@ -134,6 +150,12 @@ rows. `backend/forecaster.py` (CatBoost) is the home; it needs trained
 
 - New detector backends implement the `Detector` ABC and register in
   `get_detector()`; keep the `{label, confidence, box, ocr_text}` output shape.
+- **Single-frame** violations go in `rules.py` (`build_events`); **temporal /
+  track-based** ones go in `track_rules.py` (`TrackMonitor`). Both emit the same
+  event dict via `rules._event`, so downstream is uniform.
+- Adding a violation type is additive: a rule (+ optional add-on model), the
+  `ViolationType` enum in `shared/schema.py`, `VIOLATION_TYPES` in `service.py`,
+  and a `violation_map` entry in `emit_config.json`. Never rename existing labels.
 - Emit in `rules.py`'s label vocabulary; map to external schemas in `emit.py`.
 - Never commit weights/feeds/clips — `*.pt`, `*.safetensors`, `data/feeds/`,
   `demo-clips/`, `*.mp4` are gitignored.
