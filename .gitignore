@@ -2,7 +2,6 @@ __pycache__/
 *.pyc
 .venv/
 venv/
-env/
 *.env
 .env
 node_modules/
@@ -16,17 +15,22 @@ models/*.json
 feedback_log.jsonl
 data/police_violations.csv
 
-env/
-venv/
-node_modules/
-__pycache__/
-*.pyc
-.env
-.env.local
-data/*.csv
-models/
-.DS_Store
-__MACOSX/
-backend/feedback_log.jsonl
-dist/
-.vercel/
+# model caches & weights — never commit these (multi-GB / auto-downloaded)
+hugging-face/
+*.pt
+*.safetensors
+*.bin
+*.onnx
+
+# training artifacts
+backend/catboost_info/
+
+# generated detection output
+*.boxes.jpg
+
+# demo video clips (large)
+demo-clips/
+*.mp4
+
+# generated SCITA feeds + evidence images
+data/feeds/

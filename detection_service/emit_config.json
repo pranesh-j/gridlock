@@ -1,0 +1,27 @@
+{
+  "id_prefix": "FKID",
+  "congestion_id_prefix": "CGID",
+  "device_id": "FKDEV00000",
+  "created_by_id": "FKUSR00000",
+  "center_code": "9",
+  "police_station": "Madiwala",
+  "latitude": 12.9255567,
+  "longitude": 77.618665,
+  "location": "18th Main Road, Block 2, Koramangala, Bengaluru, Karnataka. Pin-560068 (India)",
+  "junction_name": "No Junction",
+  "violation_map": {
+    "no_helmet": {"label": "RIDING WITHOUT HELMET", "offence_code": null},
+    "lane_block": {"label": "WRONG PARKING", "offence_code": 112},
+    "triple_riding": {"label": "TRIPLE RIDING", "offence_code": null},
+    "illegal_parking": {"label": "ILLEGAL PARKING", "offence_code": null},
+    "wrong_side_driving": {"label": "WRONG SIDE DRIVING", "offence_code": null}
+  },
+  "vehicle_type_map": {
+    "car": "CAR",
+    "truck": "TRUCK",
+    "bus": "BUS",
+    "motorcycle_rider": "MOTORCYCLE",
+    "bicycle": "BICYCLE",
+    "person": "MOTORCYCLE"
+  }
+}
