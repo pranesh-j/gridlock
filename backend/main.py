@@ -188,7 +188,11 @@ def hotspots(
     police_station: Optional[str] = None,
     hour_start: Optional[int] = None,
     hour_end: Optional[int] = None,
-    sample: int = Query(default=12000, le=50000),
+    sample: int = Query(default=12000, le=300000),
+    lat_min: Optional[float] = None,
+    lat_max: Optional[float] = None,
+    lng_min: Optional[float] = None,
+    lng_max: Optional[float] = None,
 ):
     filtered = violation_data
 
@@ -203,6 +207,9 @@ def hotspots(
             filtered = [r for r in filtered if hour_start <= r["hour"] <= hour_end]
         else:
             filtered = [r for r in filtered if r["hour"] >= hour_start or r["hour"] <= hour_end]
+
+    if lat_min is not None and lat_max is not None and lng_min is not None and lng_max is not None:
+        filtered = [r for r in filtered if lat_min <= r["lat"] <= lat_max and lng_min <= r["lng"] <= lng_max]
 
     if len(filtered) > sample:
         filtered = random.sample(filtered, sample)

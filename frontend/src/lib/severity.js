@@ -1,7 +1,7 @@
 export function severityFor(count) {
-  if (count >= 20) return { key: "critical", label: "Critical", color: "var(--gl-sev-critical)", fill: "var(--gl-sev-critical-fill)" };
-  if (count >= 10) return { key: "high", label: "High", color: "var(--gl-sev-high)", fill: "var(--gl-sev-high-fill)" };
-  if (count >= 5) return { key: "moderate", label: "Moderate", color: "var(--gl-sev-moderate)", fill: "var(--gl-sev-moderate-fill)" };
+  if (count >= 100) return { key: "critical", label: "Critical", color: "var(--gl-sev-critical)", fill: "var(--gl-sev-critical-fill)" };
+  if (count >= 50)  return { key: "high",     label: "High",     color: "var(--gl-sev-high)",     fill: "var(--gl-sev-high-fill)" };
+  if (count >= 20)  return { key: "moderate", label: "Moderate", color: "var(--gl-sev-moderate)", fill: "var(--gl-sev-moderate-fill)" };
   return { key: "low", label: "Low", color: "var(--gl-sev-low)", fill: "var(--gl-sev-low-fill)" };
 }
 
@@ -25,6 +25,6 @@ export function aqiColor(t, a = 1) {
   return "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + a + ")";
 }
 
-export const intensity = (count) => Math.min(1, Math.sqrt(count) / Math.sqrt(45));
+export const intensity = (count) => Math.min(1, Math.log1p(count) / Math.log1p(200));
 export const aqiIndex = (count) => Math.max(1, Math.min(10, Math.round(intensity(count) * 9 + 1)));
 export const LEGEND = "linear-gradient(90deg," + Array.from({ length: 11 }, (_, i) => aqiColor(i / 10)).join(",") + ")";

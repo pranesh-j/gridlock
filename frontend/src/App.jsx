@@ -123,7 +123,7 @@ export default function App() {
       <Sidebar tab={tab} setTab={setTab} collapsed={collapsed} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <Topbar title={meta.title} sub={meta.sub} onToggle={() => setCollapsed(!collapsed)} />
-        <main style={{ flex: 1, overflow: fullBleed ? "hidden" : "auto", padding: fullBleed ? 18 : "22px 24px 32px" }}>
+        <main style={{ flex: 1, overflow: fullBleed ? "hidden" : "auto", padding: fullBleed ? 18 : "22px 24px 32px", background: "var(--gl-bg)" }}>
           <div key={tab} style={{ height: fullBleed ? "100%" : "auto", maxWidth: fullBleed ? "none" : "var(--gl-content-max)", margin: "0 auto" }}>
             {screen}
           </div>

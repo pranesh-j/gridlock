@@ -26,6 +26,10 @@ export async function getHotspots(filters = {}) {
   if (filters.hour_start != null) params.set("hour_start", filters.hour_start);
   if (filters.hour_end != null) params.set("hour_end", filters.hour_end);
   if (filters.sample) params.set("sample", filters.sample);
+  if (filters.lat_min != null) params.set("lat_min", filters.lat_min);
+  if (filters.lat_max != null) params.set("lat_max", filters.lat_max);
+  if (filters.lng_min != null) params.set("lng_min", filters.lng_min);
+  if (filters.lng_max != null) params.set("lng_max", filters.lng_max);
   const r = await fetch(`${BASE}/hotspots?${params.toString()}`);
   if (!r.ok) throw new Error("hotspots failed");
   return r.json();

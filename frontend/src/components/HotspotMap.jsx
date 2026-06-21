@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { mappls } from "mappls-web-maps";
 import { getHotspots, getHotspotsMeta } from "../lib/api";
-import { Filter, Clock, Car, MapPin, AlertTriangle, Loader2, X } from "lucide-react";
+import { severityFor } from "../lib/severity";
+import { Filter, Clock, Car, MapPin, AlertTriangle, X } from "lucide-react";
 
 const MAPPLS_KEY = import.meta.env.VITE_MAPPLS_KEY || "";
 
@@ -15,18 +16,46 @@ const TIME_PRESETS = [
 
 const mapplsObject = new mappls();
 
+const SEV_HEX = { low: "#22c55e", moderate: "#eab308", high: "#f97316", critical: "#ef4444" };
+
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function drawCanvas(canvas, pts, zoom) {
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const baseRadius = Math.max(18, 10 * Math.pow(2, zoom - 11));
+  pts.forEach((z) => {
+    const r = Math.min(baseRadius * (1 + Math.log1p(z.count) * 0.15), baseRadius * 2.2);
+    const [cr, cg, cb] = hexToRgb(SEV_HEX[z.sev.key]);
+    const grad = ctx.createRadialGradient(z.px, z.py, 0, z.px, z.py, r);
+    grad.addColorStop(0,   `rgba(${cr},${cg},${cb},0.75)`);
+    grad.addColorStop(0.4, `rgba(${cr},${cg},${cb},0.45)`);
+    grad.addColorStop(0.8, `rgba(${cr},${cg},${cb},0.15)`);
+    grad.addColorStop(1,   `rgba(${cr},${cg},${cb},0)`);
+    ctx.beginPath();
+    ctx.arc(z.px, z.py, r, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+  });
+}
+
 export default function HotspotMap() {
   const mapRef = useRef(null);
-  const heatLayerRef = useRef(null);
-  const markersRef = useRef([]);
+  const containerRef = useRef(null);
+  const canvasRef = useRef(null);
   const cellsRef = useRef([]);
-  const infoRef = useRef(null);
+  const projectedRef = useRef([]);
+  const rafRef = useRef(null);
 
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState(null);
-  const [stats, setStats] = useState({ total: 0, matched: 0, returned: 0 });
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [selZone, setSelZone] = useState(null);
 
   const [violationType, setViolationType] = useState("");
   const [vehicleType, setVehicleType] = useState("");
@@ -43,83 +72,44 @@ export default function HotspotMap() {
       if (mapRef.current) mapRef.current.remove();
       mapRef.current = mapplsObject.Map({
         id: "mappls-map",
-        properties: {
-          center: [12.97, 77.59],
-          zoom: 12,
-          zoomControl: true,
-          search: false,
-          location: false,
-        },
+        properties: { center: [12.97, 77.59], zoom: 12, zoomControl: true, search: false, location: false },
       });
-      mapRef.current.on("load", () => {
-        setIsMapLoaded(true);
-        // click anywhere to see violation info
-        mapRef.current.on("click", (e) => {
-          const lat = e.lngLat.lat;
-          const lng = e.lngLat.lng;
-          if (!cellsRef.current.length) return;
-          // find nearest cell
-          let best = null;
-          let bestDist = Infinity;
-          cellsRef.current.forEach((c) => {
-            const d = Math.abs(c.lat - lat) + Math.abs(c.lng - lng);
-            if (d < bestDist && d < 0.005) {
-              bestDist = d;
-              best = c;
-            }
-          });
-          // remove old info window
-          if (infoRef.current) {
-            try { mapplsObject.removeLayer({ map: mapRef.current, layer: infoRef.current }); } catch(e2) {}
-            infoRef.current = null;
-          }
-          if (best) {
-            const color = severityColor(best.count);
-            const severity = severityLabel(best.count);
-            try {
-              infoRef.current = mapplsObject.Marker({
-                map: mapRef.current,
-                position: { lat: lat, lng: lng },
-                popupHtml: `
-                  <div style="font-family:system-ui;padding:6px;min-width:180px;">
-                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-                      <span style="width:12px;height:12px;border-radius:3px;background:${color};display:inline-block;"></span>
-                      <span style="font-size:14px;font-weight:700;color:#111;">${severity} Zone</span>
-                    </div>
-                    <div style="font-size:12px;color:#444;line-height:1.8;">
-                      <div><b style="font-size:18px;color:#111;">${best.count}</b> violations in this area</div>
-                      <div>Grid: ${best.lat.toFixed(3)}, ${best.lng.toFixed(3)}</div>
-                    </div>
-                  </div>
-                `,
-              });
-            } catch(e3) {}
-          }
-        });
-      });
+      mapRef.current.on("load", () => setIsMapLoaded(true));
     });
   }, []);
 
-  const clearMarkers = () => {
-    markersRef.current.forEach((m) => {
-      try { mapplsObject.removeLayer({ map: mapRef.current, layer: m }); } catch(e) {}
-    });
-    markersRef.current = [];
-  };
+  const reproject = useCallback(() => {
+    if (!mapRef.current || !canvasRef.current || !containerRef.current) return;
+    const mapEl = document.getElementById("mappls-map");
+    const w = mapEl ? mapEl.offsetWidth : containerRef.current.offsetWidth;
+    const h = mapEl ? mapEl.offsetHeight : containerRef.current.offsetHeight;
+    if (!w || !h) return;
+    if (canvasRef.current.width !== w || canvasRef.current.height !== h) {
+      canvasRef.current.width = w;
+      canvasRef.current.height = h;
+    }
+    const pts = cellsRef.current.map((c, i) => {
+      try {
+        const px = mapRef.current.project({ lat: c.lat, lng: c.lng });
+        if (!px) return null;
+        return { id: i, px: px.x, py: px.y, count: c.count, lat: c.lat, lng: c.lng, sev: severityFor(c.count) };
+      } catch { return null; }
+    }).filter(Boolean);
+    projectedRef.current = pts;
+    const zoom = mapRef.current.getZoom ? mapRef.current.getZoom() : 12;
+    drawCanvas(canvasRef.current, pts, zoom);
+  }, []);
 
-  const severityColor = (count) => {
-    if (count >= 20) return "#ef4444";
-    if (count >= 10) return "#f97316";
-    if (count >= 5) return "#eab308";
-    return "#22c55e";
-  };
+  const startRaf = useCallback(() => {
+    if (rafRef.current) return;
+    const loop = () => { reproject(); rafRef.current = requestAnimationFrame(loop); };
+    rafRef.current = requestAnimationFrame(loop);
+  }, [reproject]);
 
-  const severityLabel = (count) => {
-    if (count >= 20) return "Critical";
-    if (count >= 10) return "High";
-    if (count >= 5) return "Moderate";
-    return "Low";
-  };
+  const stopRaf = useCallback(() => {
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    reproject();
+  }, [reproject]);
 
   const fetchAndRender = useCallback(async () => {
     if (!mapRef.current) return;
@@ -130,71 +120,50 @@ export default function HotspotMap() {
       if (violationType) filters.violation_type = violationType;
       if (vehicleType) filters.vehicle_type = vehicleType;
       if (policeStation) filters.police_station = policeStation;
-      if (tp.start != null) {
-        filters.hour_start = tp.start;
-        filters.hour_end = tp.end;
-      }
-
-      const data = await getHotspots({ ...filters, sample: 12000 });
-      setStats({ total: data.total_records, matched: data.total_matched, returned: data.points_returned });
-
-      if (heatLayerRef.current) {
-        mapplsObject.removeLayer({ map: mapRef.current, layer: heatLayerRef.current });
-        heatLayerRef.current = null;
-      }
-      clearMarkers();
-
-      // generate weighted points from cells for smooth heatmap
-      const cellsData = data.cells || [];
-      cellsRef.current = cellsData;
-
-      if (cellsData.length > 0) {
-        const weightedPoints = [];
-        cellsData.forEach((c) => {
-          // more points = hotter area, capped to avoid explosion
-          const reps = Math.min(Math.ceil(Math.sqrt(c.count) * 2), 30);
-          for (let i = 0; i < reps; i++) {
-            // slight jitter so points spread naturally
-            weightedPoints.push({
-              lat: c.lat + (Math.random() - 0.5) * 0.003,
-              lng: c.lng + (Math.random() - 0.5) * 0.003,
-            });
-          }
-        });
-
-        heatLayerRef.current = mapplsObject.HeatmapLayer({
-          map: mapRef.current,
-          data: weightedPoints,
-          fitbounds: false,
-          opacity: 0.7,
-          radius: 25,
-          maxIntensity: 40,
-          gradient: [
-            "rgba(0, 228, 0, 0)",
-            "rgba(0, 228, 0, 0.4)",
-            "rgba(100, 255, 0, 0.5)",
-            "rgba(200, 255, 0, 0.55)",
-            "rgba(255, 255, 0, 0.6)",
-            "rgba(255, 200, 0, 0.65)",
-            "rgba(255, 150, 0, 0.7)",
-            "rgba(255, 100, 0, 0.75)",
-            "rgba(255, 50, 0, 0.8)",
-            "rgba(220, 0, 0, 0.85)",
-            "rgba(150, 0, 0, 0.9)",
-          ],
-        });
-      }
+      if (tp.start != null) { filters.hour_start = tp.start; filters.hour_end = tp.end; }
+      const data = await getHotspots({ ...filters, sample: 50000 });
+      cellsRef.current = data.cells || [];
+      reproject();
     } catch (err) {
-      console.error("heatmap fetch error:", err);
+      console.error("fetch error:", err);
     } finally {
       setLoading(false);
     }
-  }, [violationType, vehicleType, policeStation, timePreset]);
+  }, [violationType, vehicleType, policeStation, timePreset, reproject]);
 
   useEffect(() => {
     if (!isMapLoaded) return;
     fetchAndRender();
   }, [isMapLoaded, violationType, vehicleType, policeStation, timePreset]);
+
+  useEffect(() => {
+    if (!isMapLoaded || !mapRef.current) return;
+    const onClick = (e) => {
+      const clickPx = mapRef.current.project({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      if (!clickPx) return;
+      let best = null, bestDist = Infinity;
+      projectedRef.current.forEach((z) => {
+        const d = Math.hypot(z.px - clickPx.x, z.py - clickPx.y);
+        if (d < bestDist && d < 50) { bestDist = d; best = z; }
+      });
+      setSelZone(best || null);
+    };
+    mapRef.current.on("movestart", startRaf);
+    mapRef.current.on("zoomstart", startRaf);
+    mapRef.current.on("moveend", stopRaf);
+    mapRef.current.on("zoomend", stopRaf);
+    mapRef.current.on("click", onClick);
+    return () => {
+      try {
+        mapRef.current.off("movestart", startRaf);
+        mapRef.current.off("zoomstart", startRaf);
+        mapRef.current.off("moveend", stopRaf);
+        mapRef.current.off("zoomend", stopRaf);
+        mapRef.current.off("click", onClick);
+      } catch {}
+      stopRaf();
+    };
+  }, [isMapLoaded, startRaf, stopRaf]);
 
   const topViolations = meta?.violation_types?.slice(0, 8) || [];
   const topVehicles = meta?.vehicle_types?.slice(0, 8) || [];
@@ -202,7 +171,7 @@ export default function HotspotMap() {
   const hasActiveFilter = violationType || vehicleType || policeStation || timePreset !== 0;
 
   return (
-    <div className="flex flex-col" style={{ height: "calc(100vh - 130px)" }}>
+    <div ref={containerRef} className="flex flex-col" style={{ height: "calc(100vh - 130px)" }}>
       <div className="relative flex-1 rounded-xl overflow-hidden border border-slate-700/50">
         {!MAPPLS_KEY && (
           <div className="absolute inset-0 z-20 bg-slate-900 flex items-center justify-center">
@@ -213,11 +182,30 @@ export default function HotspotMap() {
         )}
         <div id="mappls-map" style={{ width: "100%", height: "100%" }} />
 
+        {/* Canvas gradient overlay — pointer-events none so map stays interactive */}
+        <canvas
+          ref={canvasRef}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", zIndex: 4, pointerEvents: "none" }}
+        />
+
+        {/* click popup */}
+        {selZone && (
+          <div className="absolute z-20 bg-slate-900/95 backdrop-blur-sm rounded-xl border border-slate-700/50 p-4 min-w-[200px]"
+            style={{ left: Math.min(selZone.px + 14, 400), top: Math.max(selZone.py - 80, 10) }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold" style={{ color: selZone.sev.color }}>{selZone.sev.label} Zone</span>
+              <button onClick={() => setSelZone(null)} className="text-slate-500 hover:text-white ml-3"><X size={13} /></button>
+            </div>
+            <div className="text-2xl font-bold mb-1" style={{ color: selZone.sev.color }}>{selZone.count.toLocaleString()}</div>
+            <div className="text-[11px] text-slate-400 mb-1">violations in this ~300m cell</div>
+            <div className="text-[10px] text-slate-500 font-mono">{selZone.lat.toFixed(4)}, {selZone.lng.toFixed(4)}</div>
+          </div>
+        )}
+
         {loading && (
-          <div className="absolute inset-0 z-10 bg-slate-900/40 flex items-center justify-center pointer-events-none">
-            <div className="bg-slate-900/80 px-4 py-2 rounded-lg flex items-center gap-2">
-              <Loader2 size={16} className="text-emerald-400 animate-spin" />
-              <span className="text-sm text-slate-300">Loading heatmap...</span>
+          <div className="absolute inset-0 z-10 bg-slate-900/30 flex items-center justify-center pointer-events-none">
+            <div className="bg-slate-900/80 px-4 py-2 rounded-lg">
+              <span className="text-sm text-slate-300">Loading...</span>
             </div>
           </div>
         )}
@@ -227,25 +215,23 @@ export default function HotspotMap() {
           <div className="bg-slate-900/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-slate-700/50">
             <p className="text-xs font-medium text-white">
               <AlertTriangle size={12} className="inline text-amber-400 mr-1" />
-              Parking Violation Heatmap
+              Parking Violation Density
             </p>
             <p className="text-[11px] text-slate-400 mt-0.5">
               {meta ? `${meta.total.toLocaleString()} records` : "Loading..."}
-              {!loading && ` · ${stats.returned.toLocaleString()} shown`}
+              {!loading && ` · ${projectedRef.current.length} cells`}
             </p>
           </div>
         </div>
 
-        {/* filter button - top right */}
+        {/* filter button */}
         <div className="absolute top-3 right-14 z-10">
           <button
             onClick={() => setFiltersOpen(!filtersOpen)}
-            className={
-              "flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium backdrop-blur-sm transition-colors border " +
+            className={"flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium backdrop-blur-sm transition-colors border " +
               (filtersOpen || hasActiveFilter
                 ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
-                : "bg-slate-900/90 text-slate-300 border-slate-700/50 hover:text-white")
-            }
+                : "bg-slate-900/90 text-slate-300 border-slate-700/50 hover:text-white")}
           >
             <Filter size={13} />
             Filters
@@ -324,25 +310,18 @@ export default function HotspotMap() {
           </div>
         )}
 
-        {/* legend - bottom left, above stats */}
+        {/* legend */}
         <div className="absolute bottom-20 left-3 z-10 bg-slate-900/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-slate-700/50">
           <p className="text-[10px] text-slate-500 mb-1.5">Violation Density</p>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-slate-500">Low</span>
-            <div className="w-24 h-2 rounded-full" style={{
-              background: "linear-gradient(to right, rgba(0,228,0,0.6), rgba(255,255,0,0.7), rgba(255,150,0,0.8), rgba(220,0,0,0.9))"
-            }} />
-            <span className="text-[10px] text-slate-500">High</span>
-          </div>
-          <div className="flex items-center gap-3 mt-1.5">
+          <div className="flex items-center gap-3">
             {[
-              { color: "#22c55e", label: "<5" },
-              { color: "#eab308", label: "5-10" },
-              { color: "#f97316", label: "10-20" },
-              { color: "#ef4444", label: "20+" },
+              { color: "#22c55e", label: "<20" },
+              { color: "#eab308", label: "20-50" },
+              { color: "#f97316", label: "50-100" },
+              { color: "#ef4444", label: "100+" },
             ].map((s) => (
               <div key={s.label} className="flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
+                <span className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />
                 <span className="text-[9px] text-slate-500">{s.label}</span>
               </div>
             ))}
