@@ -7,6 +7,9 @@ from pydantic import BaseModel, Field
 class ViolationType(str, Enum):
     lane_block = "lane_block"
     no_helmet = "no_helmet"
+    triple_riding = "triple_riding"
+    illegal_parking = "illegal_parking"
+    wrong_side_driving = "wrong_side_driving"
 
 
 class BBox(BaseModel):

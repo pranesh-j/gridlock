@@ -1,9 +1,17 @@
+# Web service
 fastapi
 uvicorn[standard]
 python-multipart
+pydantic
 pillow
 
-# Dev B adds the LocateAnything stack on the 3060 box:
+# Default detector backend (DETECTOR=yolo) — fast, local, runs on CPU or GPU.
+# ultralytics pulls in a compatible torch automatically.
+ultralytics
+omegaconf      # required by the bundled plate model
+easyocr        # license-plate OCR
+
+# Optional VLM backend (DETECTOR=locateanything) — heavy, needs a GPU:
 # torch
-# transformers
+# transformers==4.53.0
 # accelerate

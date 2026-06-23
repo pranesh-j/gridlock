@@ -167,7 +167,7 @@ export default function OverviewScreen({ onNav }) {
       const cells = (data.cells || []).slice(0, 15).map((c, i) => ({
         id: i, name: "Zone " + (i + 1),
         station: c.lat.toFixed(3) + ", " + c.lng.toFixed(3),
-        count: c.count, top: "Wrong parking",
+        count: c.count, top: "violation cluster",
       }));
       setTopZones(cells);
     }).catch(() => {});
@@ -182,10 +182,10 @@ export default function OverviewScreen({ onNav }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-        <StatCard label="Total violations" value={total.toLocaleString()} icon={<Database size={15} />} delta="+4.2%" deltaTone="up" sub="vs last week" />
-        <StatCard label="Critical zones" value={criticalCount} icon={<OctagonAlert size={15} />} accent="var(--gl-sev-critical)" sub="need dispatch now" />
-        <StatCard label="Avg clearance" value="38" unit="min" icon={<Timer size={15} />} delta="-6 min" deltaTone="up" sub="forecast model" />
-        <StatCard label="Active corridors" value={meta?.police_stations?.length || 0} icon={<Route size={15} />} sub={"top: " + topViolation} />
+        <StatCard label="Total violations" value={total.toLocaleString()} icon={<Database size={15} />} sub="in dataset" />
+        <StatCard label="Critical zones" value={criticalCount} icon={<OctagonAlert size={15} />} accent="var(--gl-sev-critical)" sub="≥2000 in a cell" />
+        <StatCard label="Violation types" value={meta?.violation_types?.length || 0} icon={<Timer size={15} />} sub={"top: " + topViolation} />
+        <StatCard label="Police stations" value={meta?.police_stations?.length || 0} icon={<Route size={15} />} sub={"top: " + topStation} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 18, alignItems: "stretch", height: 520 }}>

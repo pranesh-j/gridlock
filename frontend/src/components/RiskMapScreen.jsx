@@ -252,7 +252,7 @@ export default function RiskMapScreen() {
                 {selZoneData.lat.toFixed(4)}, {selZoneData.lng.toFixed(4)}
               </div>
             </div>
-            <IconButton size="sm" variant="ghost" icon={<X size={15} />} label="Close" onClick={() => { setSel(null); setSelZoneData(null); }} />
+            <IconButton size="sm" variant="ghost" icon={<X size={15} />} label="Close" onClick={() => setSelZoneData(null)} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
             <SeverityBadge count={selZoneData.count} />

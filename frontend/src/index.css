@@ -71,3 +71,5 @@ body { background: var(--gl-bg); color: var(--gl-text-1); font-family: var(--gl-
 
 @keyframes gl-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 @keyframes gl-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes gl-spin { to { transform: rotate(360deg); } }
+.gl-spin { animation: gl-spin 0.9s linear infinite; }

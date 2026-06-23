@@ -1,4 +1,28 @@
 const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// video jobs talk to the detection service directly (heavy media shouldn't proxy
+// through the backend); falls back to localhost for dev
+const DET = import.meta.env.VITE_DETECTION_URL || "http://localhost:8001";
+
+export async function startVideoJob(file, options = {}) {
+  const form = new FormData();
+  form.append("file", file);
+  for (const [k, v] of Object.entries(options)) {
+    if (v != null && v !== "") form.append(k, v);
+  }
+  const r = await fetch(`${DET}/detect_video`, { method: "POST", body: form });
+  if (!r.ok) throw new Error("video job start failed");
+  return r.json();
+}
+
+export async function getVideoJob(jobId) {
+  const r = await fetch(`${DET}/detect_video/${jobId}`);
+  if (!r.ok) throw new Error("video job status failed");
+  return r.json();
+}
+
+export function videoJobFileUrl(jobId) {
+  return `${DET}/detect_video/${jobId}/video`;
+}
 
 export async function analyzeImage(file) {
   const form = new FormData();
@@ -44,5 +68,33 @@ export async function getHotspotsMeta() {
 export async function getFeedbackSummary() {
   const r = await fetch(`${BASE}/feedback/summary`);
   if (!r.ok) throw new Error("feedback failed");
+  return r.json();
+}
+
+export async function getCvViolations(filters = {}) {
+  const params = new URLSearchParams();
+  if (filters.violation_type) params.set("violation_type", filters.violation_type);
+  if (filters.validation_status) params.set("validation_status", filters.validation_status);
+  if (filters.limit) params.set("limit", filters.limit);
+  const r = await fetch(`${BASE}/cv/violations?${params.toString()}`);
+  if (!r.ok) throw new Error("cv violations failed");
+  return r.json();
+}
+
+export async function submitFeedback(record) {
+  const r = await fetch(`${BASE}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(record),
+  });
+  if (!r.ok) throw new Error("feedback submit failed");
+  return r.json();
+}
+
+export async function validateCvViolation(id, status = "validated") {
+  const r = await fetch(`${BASE}/cv/violations/${encodeURIComponent(id)}/validate?status=${status}`, {
+    method: "POST",
+  });
+  if (!r.ok) throw new Error("validate failed");
   return r.json();
 }
