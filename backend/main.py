@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import datetime
 
 import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
@@ -14,6 +15,11 @@ from typing import Optional, List
 from forecaster import Forecaster
 from recommender import recommend
 import feedback
+
+# Load backend/.env regardless of the working directory uvicorn was launched
+# from. Without this the Supabase creds are invisible and the service silently
+# falls back to the (often absent) CSV. Real shell env vars still win.
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 DETECTION_URL = os.environ.get("DETECTION_URL", "http://localhost:8001")
 DATA = os.path.join(os.path.dirname(__file__), "..", "data")

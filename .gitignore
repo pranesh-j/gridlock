@@ -34,3 +34,9 @@ demo-clips/
 
 # generated SCITA feeds + evidence images
 data/feeds/
+
+# async video-job inputs/annotated outputs
+detection_service/_video_jobs/
+
+# calibration reference frames
+*.reference.jpg

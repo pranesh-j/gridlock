@@ -24,6 +24,10 @@ export function videoJobFileUrl(jobId) {
   return `${DET}/detect_video/${jobId}/video`;
 }
 
+export function videoJobEvidenceUrl(jobId, name) {
+  return `${DET}/detect_video/${jobId}/evidence/${name}`;
+}
+
 export async function analyzeImage(file) {
   const form = new FormData();
   form.append("file", file);

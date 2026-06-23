@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { ImageUp, ScanEye, ShieldAlert, DoorClosed, Clock, Users, Send, Bookmark, Radar, TriangleAlert, CircleCheck, ServerCrash, Video, FileVideo, Loader } from "lucide-react";
-import { analyzeImage, startVideoJob, getVideoJob, videoJobFileUrl } from "../lib/api";
+import { ImageUp, ScanEye, ShieldAlert, DoorClosed, Clock, Users, Send, Bookmark, Radar, TriangleAlert, CircleCheck, ServerCrash, Video, FileVideo, Loader, Image as ImageIcon } from "lucide-react";
+import { analyzeImage, startVideoJob, getVideoJob, videoJobFileUrl, videoJobEvidenceUrl } from "../lib/api";
 import { Card, Button, Badge } from "./ui";
 
 function prettyType(t) {
@@ -237,7 +237,14 @@ function VideoResult({ job, error, done, running }) {
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 320, overflowY: "auto" }}>
         {events.map((e) => (
-          <div key={e.id} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 0.7fr 0.7fr", gap: 8, alignItems: "center", padding: "9px 11px", borderRadius: "var(--gl-radius-sm)", background: "var(--gl-surface-inset)", fontSize: 12.5 }}>
+          <div key={e.id} style={{ display: "grid", gridTemplateColumns: "46px 1.5fr 1fr 0.7fr 0.7fr", gap: 8, alignItems: "center", padding: "9px 11px", borderRadius: "var(--gl-radius-sm)", background: "var(--gl-surface-inset)", fontSize: 12.5 }}>
+            {e.evidence ? (
+              <a href={videoJobEvidenceUrl(job.job_id, e.evidence)} target="_blank" rel="noreferrer" title="Open evidence crop">
+                <img src={videoJobEvidenceUrl(job.job_id, e.evidence)} alt="evidence" style={{ width: 46, height: 34, objectFit: "cover", borderRadius: "var(--gl-radius-sm)", boxShadow: "var(--gl-ring)", display: "block" }} />
+              </a>
+            ) : (
+              <span style={{ width: 46, height: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "var(--gl-radius-sm)", background: "var(--gl-surface-3)", color: "var(--gl-text-3)" }}><ImageIcon size={15} /></span>
+            )}
             <span style={{ color: "var(--gl-text-1)", fontWeight: 500 }}>{prettyType(e.violation_type)}</span>
             <span style={{ fontFamily: "var(--gl-font-mono)", fontSize: 11.5, color: "var(--gl-text-2)" }}>{e.plate || "not read"}</span>
             <span style={{ fontFamily: "var(--gl-font-mono)", color: "var(--gl-text-2)" }}>{e.confidence != null ? Math.round(e.confidence * 100) + "%" : "—"}</span>

@@ -98,11 +98,15 @@ def build_events(detections, no_parking_zone=None, context=None):
     motorcycles = [d for d in detections if d["label"] == "motorcycle_rider"]
     heads = [d for d in detections if d["label"] in ("helmet", "no_helmet")]
 
-    # lane block: a vehicle sitting inside the no-parking zone. read the plate
+    # lane block: a vehicle sitting inside a no-parking zone. read the plate
     # contained within that vehicle (extended down to catch a low-mounted plate).
-    if no_parking_zone:
+    # no_parking_zone may be a single zone dict or a list of zones.
+    zones = no_parking_zone if isinstance(no_parking_zone, list) else (
+        [no_parking_zone] if no_parking_zone else [])
+    zones = [z for z in zones if z]
+    if zones:
         for v in vehicles:
-            if _center_in_zone(v["box"], no_parking_zone):
+            if any(_center_in_zone(v["box"], z) for z in zones):
                 plate = _plate_for(_extend_down(v["box"], 0.3), plates)
                 events.append(
                     _event("lane_block", v["confidence"], v, plate, context, vehicle=v)

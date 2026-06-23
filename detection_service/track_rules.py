@@ -42,14 +42,15 @@ class TrackMonitor:
     (pass rules._event wrapped so the events match the single-frame ones).
     """
 
-    def __init__(self, fps, event_builder, no_parking_zone=None,
-                 park_dwell_s=5.0, flow_vec=None, wrong_min_disp=40.0,
+    def __init__(self, fps, event_builder, park_zones=None,
+                 park_dwell_s=30.0, lanes=None, wrong_min_disp=40.0,
                  still_px=10.0, window=20):
         self.fps = fps
         self._build = event_builder
-        self.zone = no_parking_zone
+        self.park_zones = park_zones or []          # [box dict, ...]
         self.dwell = park_dwell_s
-        self.flow = _unit(flow_vec) if flow_vec else None
+        self.lanes = [{"roi": ln["roi"], "flow": _unit(ln["flow"])}
+                      for ln in (lanes or [])]       # [{roi: box, flow: unit vec}]
         self.wrong_min_disp = wrong_min_disp
         self.still_px = still_px
         self.window = window
@@ -66,22 +67,25 @@ class TrackMonitor:
             box = t["box"]
             self._hist[tid].append(_center(box))
 
-            # --- illegal parking: stationary in the zone for >= dwell seconds ---
-            if self.zone and (tid, "illegal_parking") not in self._reported:
-                if _in_zone(box, self.zone) and self._stationary(tid):
+            # --- illegal parking: stationary in ANY zone for >= dwell seconds ---
+            if self.park_zones and (tid, "illegal_parking") not in self._reported:
+                if any(_in_zone(box, z) for z in self.park_zones) and self._stationary(tid):
                     self._zone_since.setdefault(tid, frame_idx)
                     if (frame_idx - self._zone_since[tid]) / self.fps >= self.dwell:
                         events.append(self._emit("illegal_parking", t, context))
                 else:
                     self._zone_since.pop(tid, None)
 
-            # --- wrong-side driving: travel direction opposes the lane flow ---
-            if self.flow and (tid, "wrong_side_driving") not in self._reported:
+            # --- wrong-side driving: motion opposes the flow of the lane it is in ---
+            if self.lanes and (tid, "wrong_side_driving") not in self._reported:
                 v = self._displacement(tid)
                 if v and _mag(v) >= self.wrong_min_disp:
-                    # opposing if the motion unit vector points against the flow
-                    if (_unit(v)[0] * self.flow[0] + _unit(v)[1] * self.flow[1]) < -0.3:
-                        events.append(self._emit("wrong_side_driving", t, context))
+                    u = _unit(v)
+                    for ln in self.lanes:
+                        if _in_zone(box, ln["roi"]) and \
+                                (u[0] * ln["flow"][0] + u[1] * ln["flow"][1]) < -0.3:
+                            events.append(self._emit("wrong_side_driving", t, context))
+                            break
 
         return events
 

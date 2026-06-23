@@ -1,0 +1,22 @@
+{
+  "camera_id": "FKDEV00002",
+  "name": "Demo clip 2 - divided road",
+  "source": "../demo-clips/test-video-2.mp4",
+  "location": {
+    "lat": 11.9716,
+    "lng": 77.5946,
+    "address": "Demo Road, Bengaluru, Karnataka (India)",
+    "junction": "Demo Junction"
+  },
+  "center_code": "9",
+  "police_station": "Demo PS",
+  "violations": {
+    "no_helmet": {"enabled": true},
+    "triple_riding": {"enabled": true},
+    "illegal_parking": {"enabled": true, "zones": [[950, 250, 1270, 480]], "dwell_s": 3},
+    "lane_block": {"enabled": false, "zones": []},
+    "wrong_side_driving": {"enabled": false, "lanes": [{"roi": [0, 400, 1280, 720], "flow": [-1, 0]}]}
+  },
+  "congestion": {"roi": [0, 300, 1280, 720], "free_max": 8, "moderate_max": 18, "window_s": 5},
+  "detection": {"model": "yolo11m.pt", "conf": 0.35}
+}

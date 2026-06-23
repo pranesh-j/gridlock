@@ -10,6 +10,7 @@ pillow
 ultralytics
 omegaconf      # required by the bundled plate model
 easyocr        # license-plate OCR
+imageio-ffmpeg # bundles a working ffmpeg to transcode annotated clips to H.264
 
 # Optional VLM backend (DETECTOR=locateanything) — heavy, needs a GPU:
 # torch
