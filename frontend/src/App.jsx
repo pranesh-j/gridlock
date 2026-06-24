@@ -129,7 +129,7 @@ export default function App() {
     const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
     let tries = 0;
     const ping = () => {
-      fetch(`${BASE}/health`).then((r) => {
+      fetch(`${BASE}/hotspots/meta`).then((r) => {
         if (r.ok) setReady(true);
         else if (tries++ < 30) setTimeout(ping, 2000);
         else setReady(true);
@@ -143,7 +143,7 @@ export default function App() {
 
   useEffect(() => {
     if (ready) return;
-    const t = setInterval(() => setMsgIdx((i) => (i + 1) % LOADING_MSGS.length), 2500);
+    const t = setInterval(() => setMsgIdx((i) => (i + 1) % LOADING_MSGS.length), 1200);
     return () => clearInterval(t);
   }, [ready]);
 
