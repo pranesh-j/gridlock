@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 httpx
 catboost
+pandas        # safety forecaster training (train_safety.py)
 scikit-learn
 pydantic
 python-multipart

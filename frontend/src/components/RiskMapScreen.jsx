@@ -43,9 +43,9 @@ function drawCanvas(canvas, projected, zoom) {
     const r = Math.min(baseRadius * (1 + Math.log1p(z.count) * 0.15), baseRadius * 2.2);
     const [cr, cg, cb] = hexToRgb(SEV_HEX[z.sev.key]);
     const grad = ctx.createRadialGradient(z.px, z.py, 0, z.px, z.py, r);
-    grad.addColorStop(0,   `rgba(${cr},${cg},${cb},0.75)`);
-    grad.addColorStop(0.4, `rgba(${cr},${cg},${cb},0.45)`);
-    grad.addColorStop(0.8, `rgba(${cr},${cg},${cb},0.15)`);
+    grad.addColorStop(0,   `rgba(${cr},${cg},${cb},0.5)`);
+    grad.addColorStop(0.4, `rgba(${cr},${cg},${cb},0.15)`);
+    grad.addColorStop(0.8, `rgba(${cr},${cg},${cb},0.08)`);
     grad.addColorStop(1,   `rgba(${cr},${cg},${cb},0)`);
     ctx.beginPath();
     ctx.arc(z.px, z.py, r, 0, Math.PI * 2);

@@ -277,8 +277,11 @@ def process_video(
     if evidence_dir:
         os.makedirs(evidence_dir, exist_ok=True)
 
-    # structured violation events for callers (the video-job API surfaces these)
+    # structured violation events for callers: `events` is the trimmed, JSON-safe
+    # list the video-job API surfaces; `raw_events` keeps the full internal event
+    # dicts (with evidence filename + frame) so a caller can persist them durably.
     events = []
+    raw_events = []
 
     def record_event(ev, frame_idx, frame_img, all_dets):
         eid = f"v{len(events)}"
@@ -296,6 +299,9 @@ def process_video(
             "source_frame": frame_idx,
             "evidence": evidence_name,  # filename within evidence_dir, or None
         })
+        ev["_evidence_name"] = evidence_name
+        ev["_source_frame"] = frame_idx
+        raw_events.append(ev)
 
     smoothed = 0.0
     track_hist = defaultdict(lambda: deque(maxlen=15))  # id -> recent centroids
@@ -551,6 +557,7 @@ def process_video(
 
     return {
         "events": events,
+        "raw_events": raw_events,  # full internal events, for durable persistence
         "counts": dict(vio_counts),
         "out_path": out_path,
         "codec": codec,

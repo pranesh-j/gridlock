@@ -20,6 +20,16 @@ import threading
 import uuid
 from contextlib import asynccontextmanager
 
+# Load detection_service/.env (Supabase creds for durable CV-violation storage)
+# regardless of where the service was launched from. Real shell env vars win.
+# Resilient: if python-dotenv isn't installed, the service still runs — it just
+# won't auto-load .env (persistence stays off unless the vars are set elsewhere).
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+except Exception:  # noqa: BLE001 - optional convenience, never block startup
+    pass
+
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
@@ -208,6 +218,8 @@ def _process_video_job(job_id, in_path, out_path, options):
             violations=violations,
         )
 
+    evidence_dir = os.path.join(os.path.dirname(out_path), "evidence")
+
     # one GPU consumer at a time (shared with /detect and other video jobs)
     with _infer_lock:
         try:
@@ -217,7 +229,7 @@ def _process_video_job(job_id, in_path, out_path, options):
                 zone=options.get("zone"), flow=options.get("flow"),
                 dwell=options.get("dwell", 5.0),
                 emit=options.get("emit", False),
-                evidence_dir=os.path.join(os.path.dirname(out_path), "evidence"),
+                evidence_dir=evidence_dir,
                 progress_cb=on_progress,
             )
         except Exception as e:  # noqa: BLE001 - report failure back to the client
@@ -232,6 +244,15 @@ def _process_video_job(job_id, in_path, out_path, options):
             except OSError:
                 pass
 
+    # durably persist the detected violations (best-effort; never fails the job)
+    persisted = 0
+    try:
+        import cv_store
+        persisted = cv_store.persist(
+            result.get("raw_events", []), evidence_dir, job_id)
+    except Exception:  # noqa: BLE001 - store problems must not break a successful run
+        log.exception("persisting CV violations failed for job %s", job_id)
+
     _update_job(
         job_id, status="done", percent=100,
         violations=len(result["events"]),
@@ -239,7 +260,8 @@ def _process_video_job(job_id, in_path, out_path, options):
             "events": result["events"],
             "counts": result["counts"],
             "frames": result["frames"],
-            "seeded": bool(result.get("emit_dir")),
+            "persisted": persisted,
+            "seeded": persisted > 0,
         },
     )
 
