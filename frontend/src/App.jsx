@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LayoutDashboard, ScanEye, Map, BrainCircuit, PanelLeft, ScanLine, ShieldCheck } from "lucide-react";
 import OverviewScreen from "./components/OverviewScreen";
 import LiveAnalysisScreen from "./components/LiveAnalysisScreen";
@@ -111,10 +111,78 @@ function Topbar({ title, sub, onToggle }) {
   );
 }
 
+const LOADING_MSGS = [
+  "Loading Gridlock...",
+  "Connecting to the backend...",
+  "Fetching violation data...",
+  "Almost there...",
+];
+
 export default function App() {
   const [tab, setTab] = useState("overview");
   const [collapsed, setCollapsed] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [msgIdx, setMsgIdx] = useState(0);
   const meta = META[tab];
+
+  useEffect(() => {
+    const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+    let tries = 0;
+    const ping = () => {
+      fetch(`${BASE}/health`).then((r) => {
+        if (r.ok) setReady(true);
+        else if (tries++ < 30) setTimeout(ping, 2000);
+        else setReady(true);
+      }).catch(() => {
+        if (tries++ < 30) setTimeout(ping, 2000);
+        else setReady(true);
+      });
+    };
+    ping();
+  }, []);
+
+  useEffect(() => {
+    if (ready) return;
+    const t = setInterval(() => setMsgIdx((i) => (i + 1) % LOADING_MSGS.length), 2500);
+    return () => clearInterval(t);
+  }, [ready]);
+
+  if (!ready) {
+    return (
+      <div style={{
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        height: "100vh", background: "var(--gl-bg)", gap: 20,
+      }}>
+        <div style={{
+          width: 52, height: 52, borderRadius: "var(--gl-radius-md)",
+          background: "var(--gl-primary)", display: "flex", alignItems: "center", justifyContent: "center",
+          fontWeight: 800, fontSize: 22, color: "#0A0E14",
+        }}>G</div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+          <span style={{
+            fontFamily: "var(--gl-font-display)", fontSize: 20, fontWeight: 700,
+            color: "var(--gl-text-1)", letterSpacing: "-0.02em",
+          }}>Gridlock</span>
+          <span style={{ fontSize: 13, color: "var(--gl-text-3)", transition: "opacity 0.3s" }}>{LOADING_MSGS[msgIdx]}</span>
+        </div>
+        <div style={{
+          width: 160, height: 3, borderRadius: 2, background: "var(--gl-surface-3)", overflow: "hidden",
+        }}>
+          <div style={{
+            width: "40%", height: "100%", borderRadius: 2, background: "var(--gl-primary)",
+            animation: "gl-loading-bar 1.4s ease-in-out infinite",
+          }} />
+        </div>
+        <style>{`
+          @keyframes gl-loading-bar {
+            0% { transform: translateX(-100%); }
+            50% { transform: translateX(150%); }
+            100% { transform: translateX(400%); }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   let screen = null;
   if (tab === "overview") screen = <OverviewScreen onNav={setTab} />;
