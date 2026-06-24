@@ -123,16 +123,19 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [ready, setReady] = useState(false);
   const [msgIdx, setMsgIdx] = useState(0);
+  const [prefetched, setPrefetched] = useState(null);
   const meta = META[tab];
 
   useEffect(() => {
     const BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
     let tries = 0;
     const ping = () => {
-      fetch(`${BASE}/hotspots/meta`).then((r) => {
-        if (r.ok) setReady(true);
-        else if (tries++ < 30) setTimeout(ping, 2000);
-        else setReady(true);
+      Promise.all([
+        fetch(`${BASE}/hotspots/meta`).then((r) => r.ok ? r.json() : null),
+        fetch(`${BASE}/hotspots?sample=50000`).then((r) => r.ok ? r.json() : null),
+      ]).then(([metaData, hotspotsData]) => {
+        setPrefetched({ meta: metaData, hotspots: hotspotsData });
+        setReady(true);
       }).catch(() => {
         if (tries++ < 30) setTimeout(ping, 2000);
         else setReady(true);
@@ -185,7 +188,7 @@ export default function App() {
   }
 
   let screen = null;
-  if (tab === "overview") screen = <OverviewScreen onNav={setTab} />;
+  if (tab === "overview") screen = <OverviewScreen onNav={setTab} prefetched={prefetched} />;
   else if (tab === "analyze") screen = <LiveAnalysisScreen />;
   else if (tab === "detections") screen = <DetectionsScreen />;
   else if (tab === "map") screen = <RiskMapScreen />;

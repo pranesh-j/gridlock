@@ -35,7 +35,7 @@ function drawCanvas(canvas, pts, zoom) {
   });
 }
 
-function MiniMap({ onOpen }) {
+function MiniMap({ onOpen, prefetchedCells }) {
   const mapRef = useRef(null);
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
@@ -104,11 +104,16 @@ function MiniMap({ onOpen }) {
 
   useEffect(() => {
     if (!ready) return;
+    if (prefetchedCells) {
+      cellsRef.current = prefetchedCells;
+      reproject();
+      return;
+    }
     getHotspots({ sample: 50000 }).then((data) => {
       cellsRef.current = data.cells || [];
       reproject();
     }).catch(() => {});
-  }, [ready, reproject]);
+  }, [ready, reproject, prefetchedCells]);
 
   useEffect(() => {
     if (!ready || !mapRef.current) return;
@@ -157,20 +162,32 @@ function IncidentRow({ it }) {
   );
 }
 
-export default function OverviewScreen({ onNav }) {
+export default function OverviewScreen({ onNav, prefetched }) {
   const [meta, setMeta] = useState(null);
   const [topZones, setTopZones] = useState([]);
 
   useEffect(() => {
-    getHotspotsMeta().then(setMeta).catch(() => {});
-    getHotspots({ sample: 8000 }).then((data) => {
-      const cells = (data.cells || []).slice(0, 15).map((c, i) => ({
+    if (prefetched?.meta) setMeta(prefetched.meta);
+    else getHotspotsMeta().then(setMeta).catch(() => {});
+
+    const hotspotsData = prefetched?.hotspots;
+    if (hotspotsData) {
+      const cells = (hotspotsData.cells || []).slice(0, 15).map((c, i) => ({
         id: i, name: "Zone " + (i + 1),
         station: c.lat.toFixed(3) + ", " + c.lng.toFixed(3),
         count: c.count, top: "violation cluster",
       }));
       setTopZones(cells);
-    }).catch(() => {});
+    } else {
+      getHotspots({ sample: 8000 }).then((data) => {
+        const cells = (data.cells || []).slice(0, 15).map((c, i) => ({
+          id: i, name: "Zone " + (i + 1),
+          station: c.lat.toFixed(3) + ", " + c.lng.toFixed(3),
+          count: c.count, top: "violation cluster",
+        }));
+        setTopZones(cells);
+      }).catch(() => {});
+    }
   }, []);
 
   const sorted = [...topZones].sort((a, b) => b.count - a.count);
@@ -190,7 +207,7 @@ export default function OverviewScreen({ onNav }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 18, alignItems: "stretch", height: 520 }}>
         <Card padding={0} style={{ overflow: "hidden", position: "relative", height: "100%" }}>
-          <MiniMap onOpen={() => onNav && onNav("map")} />
+          <MiniMap onOpen={() => onNav && onNav("map")} prefetchedCells={prefetched?.hotspots?.cells} />
         </Card>
         <Card padding={18} style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
