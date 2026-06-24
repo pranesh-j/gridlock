@@ -4,7 +4,7 @@ import csv
 import uuid
 import random
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, date as date_cls
 
 import httpx
 from dotenv import load_dotenv
@@ -38,6 +38,7 @@ app.add_middleware(
 )
 
 forecaster = None
+safety_forecaster = None
 violation_data = []
 violation_meta = {}
 
@@ -171,11 +172,17 @@ def load_violation_data():
 
 @app.on_event("startup")
 def load():
-    global forecaster
+    global forecaster, safety_forecaster
     try:
         forecaster = Forecaster()
     except Exception as e:
         print("forecaster not loaded yet:", e)
+    try:
+        from safety import SafetyForecaster
+        safety_forecaster = SafetyForecaster()
+        print("safety forecaster loaded:", safety_forecaster.report["n_cells"], "cells")
+    except Exception as e:
+        print("safety forecaster not loaded (run train_safety.py):", e)
     load_violation_data()
 
 
@@ -359,3 +366,83 @@ def hotspots(
         "points": points,
         "cells": cells,
     }
+
+
+# --- CV-detected violations (the Detections review queue, stored in Supabase) ---
+CV_TABLE = "cv_violations"
+
+
+@app.get("/cv/violations")
+def cv_violations(
+    violation_type: Optional[str] = None,
+    validation_status: Optional[str] = None,
+    limit: int = Query(default=200, le=2000),
+):
+    """Auto-detected violations awaiting / past review. Always returns a list so
+    the Detections tab degrades gracefully (never blanks) if the store is down."""
+    sb = get_supabase()
+    if sb is None:
+        return {"violations": [], "store": "unconfigured"}
+    try:
+        q = (
+            sb.table(CV_TABLE)
+            .select("*")
+            .order("created_datetime", desc=True)
+            .limit(limit)
+        )
+        if validation_status:
+            q = q.eq("validation_status", validation_status)
+        if violation_type:
+            # violation_type is stored as a JSON-array text, e.g. ["WRONG PARKING"]
+            q = q.ilike("violation_type", f"%{violation_type}%")
+        resp = q.execute()
+        return {"violations": resp.data or []}
+    except Exception as e:  # noqa: BLE001 - surface empty rather than 500 the UI
+        print("cv/violations query failed:", e)
+        return {"violations": [], "store": "error", "detail": str(e)}
+
+
+@app.post("/cv/violations/{violation_id}/validate")
+def validate_cv_violation(violation_id: str, status: str = "validated"):
+    """Mark a detected violation reviewed. Rows persist until validated/deleted."""
+    sb = get_supabase()
+    if sb is None:
+        raise HTTPException(503, "Supabase not configured")
+    try:
+        resp = (
+            sb.table(CV_TABLE)
+            .update({
+                "validation_status": status,
+                "validation_timestamp": datetime.utcnow().isoformat(),
+            })
+            .eq("id", violation_id)
+            .execute()
+        )
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"validation update failed: {e}")
+    if not resp.data:
+        raise HTTPException(404, "violation not found")
+    return {"ok": True, "id": violation_id, "validation_status": status}
+
+
+# --- Safety: spatiotemporal violation-risk forecast (scrubbable on the map) ---
+
+@app.get("/safety/meta")
+def safety_meta():
+    if safety_forecaster is None:
+        return {"trained": False}
+    return safety_forecaster.meta()
+
+
+@app.get("/safety/forecast")
+def safety_forecast(date: str, window: int = 7):
+    """Density cells for `date` (YYYY-MM-DD): real history for past dates,
+    model prediction for future ones, aggregated over a rolling `window`."""
+    if safety_forecaster is None:
+        raise HTTPException(503, "safety model not trained (run train_safety.py)")
+    try:
+        d = date_cls.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(400, "date must be YYYY-MM-DD")
+    window = max(1, min(window, 28))
+    return safety_forecaster.window(d, days=window)

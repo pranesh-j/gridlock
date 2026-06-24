@@ -1,16 +1,18 @@
 import { useState } from "react";
-import { LayoutDashboard, ScanEye, Map, BrainCircuit, PanelLeft, ScanLine } from "lucide-react";
+import { LayoutDashboard, ScanEye, Map, BrainCircuit, PanelLeft, ScanLine, ShieldCheck } from "lucide-react";
 import OverviewScreen from "./components/OverviewScreen";
 import LiveAnalysisScreen from "./components/LiveAnalysisScreen";
 import RiskMapScreen from "./components/RiskMapScreen";
 import LearningLoopScreen from "./components/LearningLoopScreen";
 import DetectionsScreen from "./components/DetectionsScreen";
+import SafetyScreen from "./components/SafetyScreen";
 
 const NAV = [
   { id: "overview", label: "Overview", Icon: LayoutDashboard },
   { id: "analyze", label: "Live Analysis", Icon: ScanEye },
   { id: "detections", label: "Detections", Icon: ScanLine },
   { id: "map", label: "Risk Map", Icon: Map },
+  { id: "safety", label: "Safety", Icon: ShieldCheck },
   { id: "learn", label: "Learning Loop", Icon: BrainCircuit },
 ];
 
@@ -19,6 +21,7 @@ const META = {
   analyze: { title: "Live Analysis", sub: "Detect violations from a camera frame" },
   detections: { title: "Detections", sub: "Machine-detected violations with evidence" },
   map: { title: "Risk Map", sub: "Parking-violation density across the city" },
+  safety: { title: "Safety", sub: "Forecast violation risk — scrub ±2 weeks" },
   learn: { title: "Learning Loop", sub: "Post-incident forecast accuracy" },
 };
 
@@ -118,9 +121,10 @@ export default function App() {
   else if (tab === "analyze") screen = <LiveAnalysisScreen />;
   else if (tab === "detections") screen = <DetectionsScreen />;
   else if (tab === "map") screen = <RiskMapScreen />;
+  else if (tab === "safety") screen = <SafetyScreen />;
   else if (tab === "learn") screen = <LearningLoopScreen />;
 
-  const fullBleed = tab === "map";
+  const fullBleed = tab === "map" || tab === "safety";
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>

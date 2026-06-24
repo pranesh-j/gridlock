@@ -12,6 +12,10 @@ omegaconf      # required by the bundled plate model
 easyocr        # license-plate OCR
 imageio-ffmpeg # bundles a working ffmpeg to transcode annotated clips to H.264
 
+# Durable storage of detected violations (the Detections review queue)
+python-dotenv  # auto-load detection_service/.env (Supabase creds)
+supabase       # write CV violations + evidence to Supabase
+
 # Optional VLM backend (DETECTOR=locateanything) — heavy, needs a GPU:
 # torch
 # transformers==4.53.0

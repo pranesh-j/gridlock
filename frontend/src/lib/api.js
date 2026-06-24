@@ -69,6 +69,18 @@ export async function getHotspotsMeta() {
   return r.json();
 }
 
+export async function getSafetyMeta() {
+  const r = await fetch(`${BASE}/safety/meta`);
+  if (!r.ok) throw new Error("safety meta failed");
+  return r.json();
+}
+
+export async function getSafetyForecast(date, window = 7) {
+  const r = await fetch(`${BASE}/safety/forecast?date=${date}&window=${window}`);
+  if (!r.ok) throw new Error("safety forecast failed");
+  return r.json();
+}
+
 export async function getFeedbackSummary() {
   const r = await fetch(`${BASE}/feedback/summary`);
   if (!r.ok) throw new Error("feedback failed");

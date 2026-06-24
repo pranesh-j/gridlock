@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { ImageUp, ScanEye, ShieldAlert, DoorClosed, Clock, Users, Send, Bookmark, Radar, TriangleAlert, CircleCheck, ServerCrash, Video, FileVideo, Loader, Image as ImageIcon } from "lucide-react";
+import { ImageUp, ScanEye, ShieldAlert, DoorClosed, Clock, Users, Send, Bookmark, Radar, TriangleAlert, CircleCheck, ServerCrash, Video, FileVideo, Loader, Image as ImageIcon, Cctv, Circle, Trash2, Plus } from "lucide-react";
 import { analyzeImage, startVideoJob, getVideoJob, videoJobFileUrl, videoJobEvidenceUrl } from "../lib/api";
-import { Card, Button, Badge } from "./ui";
+import { Card, Button, Badge, IconButton } from "./ui";
 
 function prettyType(t) {
   return (t || "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -257,10 +257,184 @@ function VideoResult({ job, error, done, running }) {
   );
 }
 
+/* ---------------- camera mode ---------------- */
+
+const CAMERAS_KEY = "gl_cameras";
+const VIOLATION_OPTIONS = [
+  { id: "no_helmet", label: "No helmet" },
+  { id: "triple_riding", label: "Triple riding" },
+  { id: "illegal_parking", label: "Illegal parking" },
+  { id: "lane_block", label: "Lane block" },
+  { id: "wrong_side_driving", label: "Wrong-side driving" },
+];
+
+function loadCameras() {
+  try { return JSON.parse(localStorage.getItem(CAMERAS_KEY)) || []; }
+  catch { return []; }
+}
+function persistCameras(list) {
+  try { localStorage.setItem(CAMERAS_KEY, JSON.stringify(list)); } catch { /* quota */ }
+}
+function newId() {
+  return (crypto?.randomUUID?.() || "cam_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8));
+}
+
+function Field({ label, value, onChange, placeholder, required }) {
+  return (
+    <div>
+      <span style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6, fontSize: "var(--gl-text-xs)", fontWeight: 500, color: "var(--gl-text-3)" }}>
+        {label}{required && <span style={{ color: "var(--gl-sev-high)" }}>*</span>}
+      </span>
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+        style={{ width: "100%", boxSizing: "border-box", background: "var(--gl-surface-3)", color: "var(--gl-text-1)", border: "1px solid var(--gl-border-strong)", borderRadius: "var(--gl-radius-md)", padding: "7px 10px", fontSize: 12.5, fontFamily: "var(--gl-font-sans)", outline: "none" }} />
+    </div>
+  );
+}
+
+const EMPTY_CAMERA = { name: "", camera_id: "", source: "", center_code: "", address: "", junction: "", police_station: "", lat: "", lng: "", violations: ["no_helmet", "triple_riding"] };
+
+function CameraMode() {
+  const [form, setForm] = useState(EMPTY_CAMERA);
+  const [cameras, setCameras] = useState(loadCameras);
+  const [saved, setSaved] = useState(false);
+  const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
+  const toggleViolation = (id) =>
+    setForm((f) => ({ ...f, violations: f.violations.includes(id) ? f.violations.filter((x) => x !== id) : [...f.violations, id] }));
+
+  const valid = form.name.trim() && form.source.trim();
+
+  const add = () => {
+    if (!valid) return;
+    const entry = {
+      id: newId(),
+      camera_id: form.camera_id.trim() || ("FKDEV" + Math.floor(10000 + Math.random() * 89999)),
+      name: form.name.trim(),
+      source: form.source.trim(),
+      center_code: form.center_code.trim(),
+      police_station: form.police_station.trim(),
+      location: {
+        lat: form.lat.trim() ? parseFloat(form.lat) : null,
+        lng: form.lng.trim() ? parseFloat(form.lng) : null,
+        address: form.address.trim(),
+        junction: form.junction.trim(),
+      },
+      violations: form.violations,
+      created_at: new Date().toISOString(),
+    };
+    const next = [entry, ...cameras];
+    setCameras(next); persistCameras(next);
+    setForm(EMPTY_CAMERA);
+    setSaved(true); setTimeout(() => setSaved(false), 2200);
+  };
+
+  const remove = (id) => {
+    const next = cameras.filter((c) => c.id !== id);
+    setCameras(next); persistCameras(next);
+  };
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, alignItems: "start" }}>
+      {/* form */}
+      <Card padding={20} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ width: 38, height: 38, borderRadius: "var(--gl-radius-md)", background: "var(--gl-primary-soft)", boxShadow: "inset 0 0 0 1px var(--gl-primary-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Cctv size={19} style={{ color: "var(--gl-primary-hover)" }} />
+          </span>
+          <div>
+            <div style={{ fontSize: "var(--gl-text-h3)", fontWeight: 600, color: "var(--gl-text-1)" }}>Add a camera</div>
+            <div style={{ fontSize: 12, color: "var(--gl-text-3)" }}>Register a feed and its enforcement settings</div>
+          </div>
+        </div>
+
+        <Field label="Camera name" value={form.name} onChange={set("name")} placeholder="e.g. Silk Board Junction — North" required />
+        <Field label="Source (RTSP / HTTP URL or file path)" value={form.source} onChange={set("source")} placeholder="rtsp://…  or  ../demo-clips/clip.mp4" required />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Field label="Camera ID" value={form.camera_id} onChange={set("camera_id")} placeholder="auto if blank" />
+          <Field label="Center code" value={form.center_code} onChange={set("center_code")} placeholder="e.g. 9" />
+        </div>
+        <Field label="Address" value={form.address} onChange={set("address")} placeholder="Road, area, city" />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Field label="Junction" value={form.junction} onChange={set("junction")} placeholder="Junction name" />
+          <Field label="Police station" value={form.police_station} onChange={set("police_station")} placeholder="Jurisdiction" />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <Field label="Latitude" value={form.lat} onChange={set("lat")} placeholder="12.9716" />
+          <Field label="Longitude" value={form.lng} onChange={set("lng")} placeholder="77.5946" />
+        </div>
+
+        <div>
+          <span style={{ display: "block", marginBottom: 8, fontSize: "var(--gl-text-xs)", fontWeight: 500, color: "var(--gl-text-3)" }}>Violations to enforce</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {VIOLATION_OPTIONS.map((v) => {
+              const on = form.violations.includes(v.id);
+              return (
+                <button key={v.id} type="button" onClick={() => toggleViolation(v.id)} style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "6px 11px", borderRadius: "var(--gl-radius-md)",
+                  border: "1px solid " + (on ? "var(--gl-primary-border)" : "var(--gl-border-strong)"),
+                  background: on ? "var(--gl-primary-soft)" : "var(--gl-surface-3)",
+                  color: on ? "var(--gl-primary-hover)" : "var(--gl-text-3)",
+                  fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "var(--gl-font-sans)",
+                }}>
+                  {on ? <CircleCheck size={13} /> : <Circle size={13} />}{v.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 2 }}>
+          <Button variant="primary" disabled={!valid} iconLeft={<Plus size={16} />} onClick={add}
+            style={!valid ? { opacity: 0.5, cursor: "not-allowed" } : undefined}>Add camera</Button>
+          {saved && <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--gl-sev-low)" }}><CircleCheck size={14} /> Camera saved</span>}
+        </div>
+      </Card>
+
+      {/* registered cameras */}
+      <Card padding={0}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--gl-border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontFamily: "var(--gl-font-display)", fontSize: 16, fontWeight: 600, color: "var(--gl-text-1)" }}>Registered cameras</span>
+          <Badge tone="info">{cameras.length}</Badge>
+        </div>
+        {cameras.length ? (
+          <div style={{ display: "flex", flexDirection: "column", maxHeight: 520, overflowY: "auto" }}>
+            {cameras.map((c) => (
+              <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "13px 18px", borderBottom: "1px solid var(--gl-hairline)" }}>
+                <span style={{ width: 34, height: 34, flex: "none", borderRadius: "var(--gl-radius-md)", background: "var(--gl-surface-inset)", boxShadow: "var(--gl-ring)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Cctv size={16} style={{ color: "var(--gl-primary-hover)" }} />
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                    <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--gl-text-1)" }}>{c.name}</span>
+                    <span style={{ fontSize: 11, color: "var(--gl-text-3)", fontFamily: "var(--gl-font-mono)" }}>{c.camera_id}</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--gl-text-3)", fontFamily: "var(--gl-font-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.source}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
+                    {c.location?.address && <Badge tone="info">{c.location.address}</Badge>}
+                    {(c.violations || []).map((v) => <Badge key={v} tone="primary">{prettyType(v)}</Badge>)}
+                  </div>
+                </div>
+                <IconButton size="sm" variant="ghost" icon={<Trash2 size={15} />} label="Remove" onClick={() => remove(c.id)} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "48px 30px" }}>
+            <div style={{ width: 48, height: 48, marginBottom: 14, borderRadius: "50%", background: "var(--gl-surface-inset)", boxShadow: "var(--gl-ring-strong)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Cctv size={22} style={{ color: "var(--gl-text-3)" }} />
+            </div>
+            <div style={{ fontSize: "var(--gl-text-body)", fontWeight: 600, color: "var(--gl-text-1)", marginBottom: 6 }}>No cameras yet</div>
+            <div style={{ fontSize: 12.5, color: "var(--gl-text-3)", maxWidth: 300, lineHeight: 1.5 }}>Add a camera with the form. Entries are stored locally for now — wiring to live detection comes later.</div>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 /* ---------------- shell with mode toggle ---------------- */
 
 export default function LiveAnalysisScreen() {
-  const [mode, setMode] = useState("image");
+  const [mode, setMode] = useState("video");
   const Tab = ({ id, icon: Icon, label }) => (
     <button onClick={() => setMode(id)}
       style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 16px", borderRadius: "var(--gl-radius-md)", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "var(--gl-font-sans)", background: mode === id ? "var(--gl-primary)" : "var(--gl-surface-3)", color: mode === id ? "#fff" : "var(--gl-text-2)" }}>
@@ -270,10 +444,11 @@ export default function LiveAnalysisScreen() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", gap: 8 }}>
-        <Tab id="image" icon={ScanEye} label="Image" />
         <Tab id="video" icon={Video} label="Video" />
+        <Tab id="camera" icon={Cctv} label="Camera" />
+        <Tab id="image" icon={ScanEye} label="Photo" />
       </div>
-      {mode === "image" ? <ImageMode /> : <VideoMode />}
+      {mode === "video" ? <VideoMode /> : mode === "camera" ? <CameraMode /> : <ImageMode />}
     </div>
   );
 }
